@@ -2,7 +2,7 @@
 
 This script automates the creation of trade review videos by processing OBS screen recordings and TraceCraft trading data. It ingests OBS recordings named in `YYYY-MM-DD HH-mm-ss.mp4` format alongside a `dataExport.json` file containing trade metadata, then generates timestamped video clips centered around each trade's entry/exit points with configurable pre/post buffers. The clips include contextual information like symbol, direction (long/short), profit/loss, setup tags from TraceCraft's labeling system, and performance ratings formatted directly into filenames for easy identification.
 
-The script produces both individual trade clips and a merged compilation video with YouTube-compatible chapter markers, enabling traders to quickly navigate between trades during review sessions. This automated workflow replaces manual video editing by precisely aligning trading journal data with screen recordings, creating a structured highlight reel that captures key decision points and outcomes from the trading session. The output preserves original video quality through FFmpeg stream copying while maintaining platform compatibility across Windows, macOS, and Linux systems.
+The script produces both individual trade clips and a merged compilation video with YouTube-compatible chapter markers, enabling traders to quickly navigate between trades during review sessions. This automated workflow replaces manual video editing by precisely aligning trading journal data with screen recordings, creating a structured highlight reel that captures key decision points and outcomes from the trading session. The output preserves original video quality through FFmpeg stream copying.
 
 ## Installation Requirements
 
@@ -34,7 +34,8 @@ scoop install ffmpeg
 Edit these values in the script's `config` map:
 ```clojure
 (def config
-  {:extracting-clips? true
+  {:tag-group "Setups"  ; Name of the tag group
+   :extracting-clips? true
    :pre-buffer 30   ; Seconds before trade entry
    :post-buffer 60  ; Seconds after trade exit
    :ffmpeg-path "ffmpeg" ; Verify matches installed binary name
@@ -48,8 +49,9 @@ Edit these values in the script's `config` map:
 ## Execution Steps
 
 **1. Prepare Input Files**
+- Download the script `clips.clj`
 - Place OBS recordings in format: `YYYY-MM-DD HH-mm-ss.mp4`
-- Download the script clips.clj
+- Tag all your trades in TradeCraft
 - Download `dataExport.json` from TraceCraft and place it in the same folder as the script
 
 **2. Run the Script**

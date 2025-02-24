@@ -7,7 +7,8 @@
          '[babashka.process :as proc])
 
 (def config
-  {:extracting-clips? true
+  {:tag-group "Setups"  ; Name of the tag group
+   :extracting-clips? true
    :pre-buffer 30   ; Seconds before entry
    :post-buffer 60  ; Seconds after exit
    :ffmpeg-path "ffmpeg"
@@ -19,7 +20,7 @@
 
 (defn find-setup-tags [tag-groups tags]
   (let [setup-group-id (->> tag-groups
-                            (filter #(= "Setups" (:name %)))
+                            (filter #(= (:tag-group config) (:name %)))
                             first
                             :tagGroupId)]
     (->> tags
@@ -268,6 +269,7 @@
          (str/join "\n")
          (println))
     (merge-clips trade-day (->> processed-trades
-                      (map generate-trade-clips)))))
+                                (sort-by :entry-zdt)
+                                (map generate-trade-clips)))))
 
 (-main *command-line-args*)
