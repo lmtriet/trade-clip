@@ -7,9 +7,15 @@
          '[babashka.process :as proc])
 
 (def config
-  {:pre-buffer 30   ; Seconds before entry
+  {:extracting-clips? true
+   :pre-buffer 30   ; Seconds before entry
    :post-buffer 60  ; Seconds after exit
-   :ffmpeg-path "ffmpeg"})
+   :ffmpeg-path "ffmpeg"
+   :upload-youtube? true
+   :client-id ""
+   :client-secret ""
+   :access-token-file "./access_token"
+   :refresh-token-file "./refresh_token"})
 
 (defn find-setup-tags [tag-groups tags]
   (let [setup-group-id (->> tag-groups
@@ -84,6 +90,10 @@
   "Generate trade clips with :pre-buffer before entry and :post-buffer after exit.
    Uses FFmpeg to copy streams without re-encoding. Returns output path for diagnostics."
   [trade]
+  (when-not (:extracting-clips? config)
+    (println "Extracting clips disabled")
+    (System/exit 0))
+
   (when-not (ffmpeg-exists?)
     (binding [*out* *err*]
       (println "ERROR: FFmpeg executable not found in PATH"))
@@ -115,7 +125,7 @@
 
     ;; Execute FFmpeg with clean error handling
     (try
-      (println "Extracting clip " output-path)
+      (println "Extracting clip" output-path)
       (proc/shell {:dir video-dir
                    :err :inherit
                    :out :inherit}
@@ -126,7 +136,7 @@
                   "-t" (str duration-secs)
                   "-c" "copy"
                   output-path)
-      output-path
+      {:output-path output-path :duration-secs duration-secs}
       (catch Exception e
         (binding [*out* *err*]
           (println "FFmpeg processing failed for trade:" symbol_id)
@@ -137,6 +147,84 @@
   (str/replace filename
                #"(\d{4}) (\d{2}) (\d{2}) (\d{2}) (\d{2}) (\d{2})\.mp4"
                "$1-$2-$3 $4-$5-$6.mp4"))
+
+;; TODO
+(defn check-tokens-or-authenticate
+  "Check if access token exists and still valid. If not use the refresh token to get a new one.
+  If nothing exist or valid. Authenticate to Youtube OAuth and save the tokens for later use.
+  Return the access token to upload videos"
+  [])
+
+;; TODO
+(defn ensure-playlist-exist
+  "Ensure that the playlist exist. Create a new one if not. The created playlist is unlisted."
+  [access-token playlist-name])
+
+;; TODO
+(defn upload-clip-youtube
+  "Upload the trade clip, unlisted, to youtube. The playlist is the setup name."
+  [clip-file trade]
+  (when (:upload-youtube? config)
+    ;; todo
+    ))
+
+(defn merge-clips
+  "Parameters clips is a list of map {:output-path output-path :duration-secs duration-secs}, trade-day is the current trade-day
+  This function merges the clips into one file named {trade-day}_AllTrades.mp4 using FFMPEG. Generate the timecode pastable to Youtube."
+  [trade-day clips]
+  (let [{:keys [ffmpeg-path]} config
+        ;; Filter out any nil clips from failed processing
+        valid-clips (filter :output-path clips)
+        output-filename (format "%d_AllTrades.mp4" trade-day)
+        output-path (-> (get-in (first valid-clips) [:output-path])
+                        fs/parent
+                        (fs/file output-filename)
+                        str)
+
+        ;; Generate chapter list with accumulated timestamps
+        chapters (->> valid-clips
+                      (reduce (fn [{:keys [acc-time] :as state} {:keys [output-path duration-secs]}]
+                                (let [chapter-name (-> output-path fs/file-name (str/replace #"\.mp4$" ""))
+                                      start-time (seconds->timecode acc-time)
+                                      end-time (seconds->timecode (+ acc-time duration-secs))]
+                                  {:acc-time (+ acc-time duration-secs)
+                                   :lines (conj (:lines state)
+                                                (format "%s %s - %s" start-time chapter-name end-time))}))
+                              {:acc-time 0 :lines []})
+                      :lines
+                      (str/join "\n"))]
+
+    (when (seq valid-clips)
+      ;; Create temporary file listing clips for concat
+      (let [list-file (str (fs/create-temp-file {:prefix "ffmpeg-list-" :suffix ".txt"}))]
+        (try
+          ;; Write FFmpeg concat list
+          (spit list-file
+                (str/join "\n"
+                          (map #(format "file '%s'" (-> % :output-path fs/absolutize str))
+                               valid-clips)))
+
+          ;; Execute FFmpeg merge command
+          (proc/shell {:err :inherit :out :inherit}
+                      ffmpeg-path
+                      "-y"
+                      "-f" "concat"
+                      "-safe" "0"
+                      "-i" (str list-file)
+                      "-c" "copy"
+                      output-path)
+
+          ;; Write chapters to text file
+          (let [chapters-file (str (fs/parent output-path) fs/file-separator "chapters.txt")]
+            (spit chapters-file chapters)
+            (println (str "Merged video: " output-path))
+            (println (str "Youtube Chapters saved to: " chapters-file))
+            (println chapters))
+
+
+          (finally
+            (fs/delete list-file)))))))
+
 
 (defn -main [args]
   (when (not= 1 (count args))
@@ -179,8 +267,7 @@
          (map format-chapter-line)
          (str/join "\n")
          (println))
-    (doseq [trade processed-trades]
-      (generate-trade-clips trade))
-    ))
+    (merge-clips trade-day (->> processed-trades
+                      (map generate-trade-clips)))))
 
 (-main *command-line-args*)
