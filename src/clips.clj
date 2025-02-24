@@ -53,7 +53,7 @@
 
 (defn seconds->timecode [seconds]
   "Convert the duration to Youtube timecode, set it 30s before the entry time"
-  (let [abs-secs (Math/abs (- seconds 30))
+  (let [abs-secs (Math/abs (- seconds 0))
         hours (quot abs-secs 3600)
         remainder (mod abs-secs 3600)
         minutes (quot remainder 60)
@@ -249,7 +249,7 @@
                                            entry-zdt (.atZone entry-instant (.getZone clip-start))
                                            exit-zdt (.atZone exit-instant (.getZone clip-start))
                                            duration (java.time.Duration/between clip-start entry-zdt)
-                                           total-secs (max 0 (.getSeconds duration)) ;; Enforce >= 0
+                                           total-secs (max 0 (- (.getSeconds duration) (:pre-buffer config))) ;; Enforce >= 0
                                            ]
                                        {:filepath filepath
                                         :entry_timestamp (.format formatter entry-instant)
